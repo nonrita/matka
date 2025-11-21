@@ -5,7 +5,7 @@
 
     <main class="max-w-md mx-auto p-4">
       
-      <div v-if="pending" class="text-center py-20 text-gray-400">
+      <div v-if="pending" class="text-center py-20 text-gray-400 animate-pulse">
         Loading...
       </div>
 
@@ -16,14 +16,22 @@
 
       <div v-else class="space-y-4 mt-4">
         
-        <div class="text-center py-12 border-2 border-dashed border-gray-200 rounded-2xl bg-white/50">
+        <div v-if="schedules && schedules.length > 0" class="space-y-3">
+          <ScheduleItem 
+            v-for="item in schedules" 
+            :key="item.id" 
+            :schedule="item" 
+          />
+        </div>
+
+        <div v-else class="text-center py-12 border-2 border-dashed border-gray-200 rounded-2xl bg-white/50">
           <p class="text-matka-primary font-bold mb-2">予定がまだありません</p>
           <p class="text-sm text-gray-500">
             下のボタンから<br>最初の予定を追加しましょう
           </p>
         </div>
-
-        </div>
+        
+      </div>
     </main>
 
     <button 
@@ -41,14 +49,24 @@ const route = useRoute()
 const client = useSupabaseClient()
 const tripId = route.params.id as string
 
-// DBから旅行データ(trips)を取得する
-// useAsyncDataを使うことで、サーバーサイドレンダリング時にも効率よく取得できる
+// 1. 旅行情報の取得
 const { data: trip, pending, error } = await useAsyncData(`trip-${tripId}`, async () => {
   const { data, error } = await client
     .from('trips')
     .select('*')
     .eq('id', tripId)
     .single()
+  if (error) throw error
+  return data
+})
+
+// 2. スケジュール一覧の取得 (order_index順)
+const { data: schedules, refresh: refreshSchedules } = await useAsyncData(`schedules-${tripId}`, async () => {
+  const { data, error } = await client
+    .from('schedules')
+    .select('*')
+    .eq('trip_id', tripId)
+    .order('order_index', { ascending: true }) // 並び順通りに取得
   
   if (error) throw error
   return data
