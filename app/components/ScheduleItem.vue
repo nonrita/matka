@@ -1,8 +1,12 @@
 <template>
   <div 
     @click="$emit('click')"
-    class="bg-white rounded-xl p-4 shadow-sm border-l-4 border-matka-primary flex gap-4 items-start hover:shadow-md transition-shadow cursor-pointer active:scale-[0.99] transition-transform"
+    class="bg-white rounded-xl p-4 shadow-sm border-l-4 border-matka-primary flex gap-4 items-start hover:shadow-md transition-shadow cursor-pointer active:scale-[0.99] transition-transform group"
   >
+    <div class="text-gray-300 cursor-grab active:cursor-grabbing mt-1 drag-handle" @click.stop>
+      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/></svg>
+    </div>
+
     <div class="text-center min-w-[3rem]">
       <div class="text-lg font-bold text-matka-text leading-none">
         {{ formatTime(schedule.start_time) }}
@@ -24,10 +28,7 @@
 const props = defineProps<{
   schedule: any
 }>()
-
-// ★追加: クリックイベントを定義
 defineEmits(['click'])
-
 const formatTime = (timeStr?: string) => {
   if (!timeStr) return '--:--'
   return timeStr.slice(0, 5)

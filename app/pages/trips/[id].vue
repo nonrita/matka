@@ -6,17 +6,47 @@
     <main class="max-w-md mx-auto p-4">
       
       <div v-if="pending" class="text-center py-20 text-gray-400 animate-pulse">Loading...</div>
+      
       <div v-else-if="error || !trip" class="text-center py-20 text-red-500">データが見つかりません</div>
 
-      <div v-else class="space-y-4 mt-4">
-        <div v-if="schedules && schedules.length > 0" class="space-y-3">
-          <ScheduleItem v-for="item in schedules" :key="item?.id" :schedule="item" @click="openModal(item)" />
-        </div>
+      <div v-else class="mt-4">
         
-        <div v-else class="text-center py-12 border-2 border-dashed border-gray-200 rounded-2xl bg-white/50">
-          <p class="text-matka-primary font-bold mb-2">予定がまだありません</p>
-          <p class="text-sm text-gray-500">下のボタンから予定を追加しましょう</p>
-        </div>
+        <ClientOnly>
+          
+          <div class="space-y-4">
+            
+            <draggable 
+              v-if="schedules && schedules.length > 0"
+              v-model="schedules" 
+              item-key="id"
+              handle=".drag-handle"
+              :animation="200"
+              class="space-y-3"
+              @end="onDragEnd"
+            >
+              <template #item="{ element }">
+                <ScheduleItem 
+                  :schedule="element" 
+                  @click="openModal(element)" 
+                />
+              </template>
+            </draggable>
+            
+            <div v-else class="text-center py-12 border-2 border-dashed border-gray-200 rounded-2xl bg-white/50">
+              <p class="text-matka-primary font-bold mb-2">予定がまだありません</p>
+              <p class="text-sm text-gray-500">
+                下のボタンから<br>最初の予定を追加しましょう
+              </p>
+            </div>
+
+          </div>
+
+          <template #fallback>
+             <div class="text-center text-gray-400 py-10">読み込み中...</div>
+          </template>
+          
+        </ClientOnly>
+
       </div>
     </main>
 
@@ -38,15 +68,18 @@
 </template>
 
 <script setup lang="ts">
+// ★重要: vuedraggable をインポート
+import draggable from 'vuedraggable'
+
 const route = useRoute()
-// ★修正1: <any> をつけて、型チェックを少し緩める（Insertエラー回避）
-const client = useSupabaseClient<any>()
+const client = useSupabaseClient<any>() // 型チェック緩和
 const tripId = route.params.id as string
 
-// モーダルの開閉状態
+// 状態管理
 const isModalOpen = ref(false)
+const editingSchedule = ref<Schedule | null>(null)
 
-// ★修正2: データの型を定義する
+// 型定義
 type Trip = {
   id: string
   title: string
@@ -61,31 +94,36 @@ type Schedule = {
   order_index: number
 }
 
-// データの取得 (Read)
-// ★修正3: useAsyncDataに <Trip> 型を指定
+// --- データ取得 (Read) ---
+
+// 1. 旅行情報の取得
 const { data: trip, pending, error } = await useAsyncData<Trip>(`trip-${tripId}`, async () => {
   const { data, error } = await client.from('trips').select('*').eq('id', tripId).single()
   if (error) throw error
   return data
 })
 
-// ★修正4: useAsyncDataに <Schedule[]> (配列) 型を指定
+// 2. スケジュール一覧の取得
 const { data: schedules, refresh: refreshSchedules } = await useAsyncData<Schedule[]>(`schedules-${tripId}`, async () => {
-  const { data, error } = await client.from('schedules').select('*').eq('trip_id', tripId).order('order_index', { ascending: true })
+  const { data, error } = await client
+    .from('schedules')
+    .select('*')
+    .eq('trip_id', tripId)
+    .order('order_index', { ascending: true })
+  
   if (error) throw error
   return data
 })
 
-// ★追加: 現在編集中のスケジュール (nullなら新規作成)
-const editingSchedule = ref<Schedule | null>(null)
+// --- アクション ---
 
-// ★追加: モーダルを開く処理
+// モーダルを開く
 const openModal = (schedule: Schedule | null) => {
   editingSchedule.value = schedule
   isModalOpen.value = true
 }
 
-// データの保存 (分岐ロジック)
+// 保存処理 (新規作成 & 更新)
 const handleSave = async (formData: any) => {
   try {
     const commonData = {
@@ -95,14 +133,14 @@ const handleSave = async (formData: any) => {
     }
 
     if (editingSchedule.value) {
-      // ■ 更新 (UPDATE)
+      // Update
       const { error } = await client
         .from('schedules')
         .update(commonData)
-        .eq('id', editingSchedule.value.id) // IDで指定して更新
+        .eq('id', editingSchedule.value.id)
       if (error) throw error
     } else {
-      // ■ 新規作成 (INSERT)
+      // Insert
       const { error } = await client
         .from('schedules')
         .insert({
@@ -122,7 +160,7 @@ const handleSave = async (formData: any) => {
   }
 }
 
-// ★追加: 削除 (DELETE)
+// 削除処理
 const handleDelete = async () => {
   if (!editingSchedule.value) return
   if (!confirm('本当に削除しますか？')) return
@@ -140,6 +178,33 @@ const handleDelete = async () => {
   } catch (e) {
     console.error('Error deleting:', e)
     alert('削除に失敗しました')
+  }
+}
+
+// --- ドラッグ＆ドロップ処理 (Issue #8) ---
+const onDragEnd = async () => {
+  if (!schedules.value) return
+
+  try {
+    // 1. 並び替え後の配列に基づいて、indexを振り直す
+    const updates = schedules.value.map((item, index) => ({
+      id: item.id,
+      trip_id: tripId,
+      title: item.title,
+      // ここで新しい順番(index)をセットする
+      order_index: index 
+    }))
+
+    // 2. Supabaseに一括更新 (Upsert)
+    const { error } = await client
+      .from('schedules')
+      .upsert(updates)
+
+    if (error) throw error
+    
+  } catch (e) {
+    console.error('Error reordering:', e)
+    alert('並び順の保存に失敗しました')
   }
 }
 </script>
