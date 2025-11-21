@@ -1,6 +1,8 @@
 <template>
-  <div class="bg-white rounded-xl p-4 shadow-sm border-l-4 border-matka-primary flex gap-4 items-start hover:shadow-md transition-shadow">
-    
+  <div 
+    @click="$emit('click')"
+    class="bg-white rounded-xl p-4 shadow-sm border-l-4 border-matka-primary flex gap-4 items-start hover:shadow-md transition-shadow cursor-pointer active:scale-[0.99] transition-transform"
+  >
     <div class="text-center min-w-[3rem]">
       <div class="text-lg font-bold text-matka-text leading-none">
         {{ formatTime(schedule.start_time) }}
@@ -15,20 +17,19 @@
         {{ schedule.memo }}
       </p>
     </div>
-
   </div>
 </template>
 
 <script setup lang="ts">
-// 親からデータを受け取る
 const props = defineProps<{
-  schedule: any // 本来は型定義すべきですが一旦anyで進めます
+  schedule: any
 }>()
 
-// 時間 (HH:MM:SS) を (HH:MM) に整形する関数
+// ★追加: クリックイベントを定義
+defineEmits(['click'])
+
 const formatTime = (timeStr?: string) => {
   if (!timeStr) return '--:--'
-  // "10:00:00" -> "10:00" にカット
   return timeStr.slice(0, 5)
 }
 </script>
